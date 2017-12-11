@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf8" />
+  <title>Simple reactjs template</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.24.0/babel.js"></script>
+  <style>
+  .label {
+    text-align: right;
+    width: 100px;
+    padding: 3px;
+  }
+  .value {
+    text-align: left;
+    padding: 3px;
+  }
+  .card {
+    display: inline-block;
+    margin: 10px;
+    border: solid #a0a0a0 1px;
+    background-color: #efefef;
+    border-radius: 5px;
+  }
+  .card-row {
+    margin: 3px;
+  }
+  .card-row > span {
+    display: inline-block;
+  }
+  </style>
+</head>
+<body>
+<!-- scripts required -->
+<script id="react" src="https://cdnjs.cloudflare.com/ajax/libs/react/15.6.2/react.js"></script>
+<script id="react-dom" src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/15.6.2/react-dom.js"></script>
+<script id="redux" src="https://cdnjs.cloudflare.com/ajax/libs/redux/3.7.2/redux.js"></script>
+<script id="react-redux" src="https://cdnjs.cloudflare.com/ajax/libs/react-redux/5.0.6/react-redux.js"></script>
+<script id="prop-types" src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.6.0/prop-types.js"></script>
+<script id="classnames" src="https://cdnjs.cloudflare.com/ajax/libs/classnames/2.2.5/index.js"></script>
+<script id="react-widgets" src="https://cdnjs.cloudflare.com/ajax/libs/react-widgets/4.1.1/react-widgets.js"></script>
+<!-- styles -->
+<link id="react-widgets-css" rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/react-widgets/4.1.1/css/react-widgets.css" />
+<!-- react container -->
+<div id="container"></div>
+<!-- load script -->
+<script type="text/babel">
+  /*-------------------*/
+  /* #region DRY setup */
+  /*********************/
+  const { createStore, combineReducers, applyMiddleware } = Redux;
+  const { Provider, connect } = ReactRedux;
+
+  const withDefaultState = ( reducer ) => {
+    // ensures that the default state is returned 
+    // in case the reducer doesn't return anything
+    // but the advantage is that I can worry about 
+    // code inside the reducer at a later time
+    return (state = { defaultState: true }, action) => {
+      return reducer(state, action) || state;
+    }
+  };
+
+  // creates actions based on a name and some other arguments
+  // eg: actions('person')('get', 'set')
+  // should return an object like:
+  // { get: 'person/get', set: 'person/set' }
+  const actions = name => (...args) => {
+    return args.reduce( (current, prop) => {
+      current[prop] = `${name}/${prop}`;
+      return current;
+    }, {} );
+  }
+
+  // combines the state based on the arguments given
+  // arguments should be string or 
+  // object in the form of { target: 'property', select: (object, string)(), source: 'optional state property, if not available takes target' }
+  // eg: stateMapper('persons')
+  // creates an object with
+  // { persons: state.persons }
+  // eg: stateMapper({ target: 'malePersons', source: 'persons', select: (ds, prop) => ds.filter(i => i.sex === 'm') })
+  // will return
+  // { malePersons: select(state[persons], 'malePersons') }
+  const stateMapper = (...args) => state => args.reduce( (current, prop) => {
+    if (typeof prop === 'object') {
+      current[prop.target] = prop.select( (prop.source && state[prop.source]) || state[prop.target], prop.target );
+      return current;
+    }
+    current[prop] = state[prop];
+    return current;
+  }, {} );
+
+  // creates a dispatcher for all actions defined that calls dispatch with the action type and sends the args as a payload
+  const actionDispatcher = ( actions ) => dispatch => Object.keys(actions).reduce( (current, prop) => {
+    current[prop] = (...args) => dispatch( { type: actions[prop], payload: args } );
+    return current;
+  }, {} );
+
+  // a middleware that is aware of promises, but doesn't enforce them
+  const promiseAware = store => next => action => {
+    (action.then && action.then( next )) || next( action );
+  };
+
+  const serviceDispatcher = ( actions ) => ( service ) => ( dispatch ) => Object.keys( actions ).reduce( (current, prop) => {
+    if ( service[prop] ) {
+      // when there is a service call defined for it
+      // we will call the service and handle the response as part of the promise callback
+      current[prop] = (...args) => service[prop]( { type: actions[prop], payload: args } ).then( dispatch );
+      return current;
+    } 
+    // when no service call is available, we will just dispatch the action
+    current[prop] = (...args) => dispatch( { type: actions[prop], payload: args } );
+    return current;
+  }, {});
+
+  /*------------------*/
+  /* #region reducers */
+  /********************/
+  const personReducer = ( state, action ) => {
+    switch (action.type) {
+      case 'persons/set':
+        return action.payload;
+      default:
+        return state;
+    }
+  };
+
+  /*------------------*/
+  /* #region services */
+  /********************/
+  const personsData = [
+    { id: 1, firstName: 'john', lastName: 'doe', gender: 'm', country: 'usa' },
+    { id: 2, firstName: 'jane', lastName: 'doe', gender: 'f', country: 'usa' },
+    { id: 3, firstName: 'max', lastName: 'musterman', gender: 'm', country: 'germany' },
+    { id: 4, firstName: 'ulrike', lastName: 'musterman', gender: 'f', country: 'germany' },
+    { id: 5, firstName: 'john', lastName: 'smith', gender: 'm', country: 'uk' },
+    { id: 6, firstName: 'jane', lastName: 'smith', gender: 'f', country: 'uk' }
+  ];
+
+  const personService = {
+    get() {
+      return Promise.resolve( { type: 'persons/set', payload: personsData } );
+    }
+  };
+
+  /*--------------------*/
+  /* #region components */
+  /**********************/
+
+  const Person = ({ id, firstName, lastName, gender, country }) => {
+    return (<div className="card">
+      <div className="card-row"><span className="label">id:</span><span className="value">{ id }</span></div>
+      <div className="card-row"><span className="label">first name:</span><span className="value">{ firstName }</span></div>
+      <div className="card-row"><span className="label">last name:</span><span className="value">{ lastName }</span></div>
+      <div className="card-row"><span className="label">gender:</span><span className="value">{ gender }</span></div>
+      <div className="card-row"><span className="label">country:</span><span className="value">{ country }</span></div>
+    </div>);
+  };
+
+  // sample component, can be seen as the default app, not connected to anything
+  class Sample extends React.Component {
+    getPersons() {
+      this.props.get();
+    }
+    render() {
+      let { persons } = this.props;
+      return (
+        <div>
+          <div>
+            <h1>Persons</h1>
+            <button onClick={() => this.getPersons()} type="button">Reload</button>
+          </div>
+          { persons && persons.map && <div>{ persons.map( (person) => <Person {...person} key={person.id} /> ) }</div> }
+        </div>
+      );
+    }
+  }  
+
+  /*-------------*/
+  /* #region app */
+  /***************/
+  // quick and dirty to combine multiple reducers into the state
+  const reducers = {
+    persons: withDefaultState( personReducer )
+  };
+
+  // create a store, apply the promiseAware middleware
+  const store = createStore( combineReducers( reducers ), applyMiddleware( promiseAware ) );
+
+  const personsAction = actions( 'persons' )( 'get', 'set' );
+  const personsDispatcher = serviceDispatcher( personsAction )( personService );
+  const personsStateMapper = stateMapper( 'persons' );
+
+  // create a state aware sample component
+  const ConnectedSample = connect( personsStateMapper, personsDispatcher)( Sample );
+
+  // render towards the container
+  const target = document.querySelector('#container');
+  ReactDOM.render( <Provider store={store}><ConnectedSample /></Provider>, target );
+</script>
+</body>
+</html>
