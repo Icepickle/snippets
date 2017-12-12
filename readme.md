@@ -2,7 +2,7 @@ A dummy repository mainly for setting up a testing environment with some simple 
 
 ** Snippets **
 
-*[React redux snippets](react-redux-snippets.html)*
+*[React redux snippets](react-redux-snippet.html)*
 
 Is an HTML containing:
 
