@@ -50,13 +50,13 @@
   const { createStore, combineReducers, applyMiddleware } = Redux;
   const { Provider, connect } = ReactRedux;
 
-  const withDefaultState = ( reducer ) => {
-    // ensures that the default state is returned 
+  const withDefaultState = ( reducer, defaultState = { defaultState: true } ) => {
+    // ensures that the default state is returned
     // in case the reducer doesn't return anything
-    // but the advantage is that I can worry about 
+    // but the advantage is that I can worry about
     // code inside the reducer at a later time
-    return (state = { defaultState: true }, action) => {
-      return reducer(state, action) || state;
+    return (state, action) => {
+      return reducer(state, action) || defaultState;
     }
   };
 
@@ -72,14 +72,14 @@
   }
 
   // combines the state based on the arguments given
-  // arguments should be string or 
+  // arguments should be string or
   // object in the form of { target: 'property', select: (object, string)(), source: 'optional state property, if not available takes target' }
-  // eg: stateMapper('persons')
+  // eg: stateMapper('people')
   // creates an object with
-  // { persons: state.persons }
-  // eg: stateMapper({ target: 'malePersons', source: 'persons', select: (ds, prop) => ds.filter(i => i.sex === 'm') })
+  // { people: state.people }
+  // eg: stateMapper({ target: 'malepeople', source: 'people', select: (ds, prop) => ds.filter(i => i.sex === 'm') })
   // will return
-  // { malePersons: select(state[persons], 'malePersons') }
+  // { malepeople: select(state[people], 'malepeople') }
   const stateMapper = (...args) => state => args.reduce( (current, prop) => {
     if (typeof prop === 'object') {
       current[prop.target] = prop.select( (prop.source && state[prop.source]) || state[prop.target], prop.target );
@@ -106,19 +106,24 @@
       // we will call the service and handle the response as part of the promise callback
       current[prop] = (...args) => service[prop]( { type: actions[prop], payload: args } ).then( dispatch );
       return current;
-    } 
+    }
     // when no service call is available, we will just dispatch the action
     current[prop] = (...args) => dispatch( { type: actions[prop], payload: args } );
     return current;
   }, {});
 
+  /*-----------------*/
+  /* #region actions */
+  /*******************/
+  const peopleActions = actions( 'people' )( 'get', 'set' );
+
   /*------------------*/
   /* #region reducers */
   /********************/
-  const personReducer = ( state, action ) => {
+  const peopleReducer = ( state, action ) => {
     switch (action.type) {
-      case 'persons/set':
-        return action.payload;
+      case peopleActions.set:
+        return [...action.payload];
       default:
         return state;
     }
@@ -127,7 +132,7 @@
   /*------------------*/
   /* #region services */
   /********************/
-  const personsData = [
+  const peopleData = [
     { id: 1, firstName: 'john', lastName: 'doe', gender: 'm', country: 'usa' },
     { id: 2, firstName: 'jane', lastName: 'doe', gender: 'f', country: 'usa' },
     { id: 3, firstName: 'max', lastName: 'musterman', gender: 'm', country: 'germany' },
@@ -136,16 +141,15 @@
     { id: 6, firstName: 'jane', lastName: 'smith', gender: 'f', country: 'uk' }
   ];
 
-  const personService = {
+  const peopleService = {
     get() {
-      return Promise.resolve( { type: 'persons/set', payload: personsData } );
+      return Promise.resolve( { type: peopleActions.set, payload: peopleData } );
     }
   };
 
   /*--------------------*/
   /* #region components */
   /**********************/
-
   const Person = ({ id, firstName, lastName, gender, country }) => {
     return (<div className="card">
       <div className="card-row"><span className="label">id:</span><span className="value">{ id }</span></div>
@@ -158,40 +162,62 @@
 
   // sample component, can be seen as the default app, not connected to anything
   class Sample extends React.Component {
-    getPersons() {
+    getPeople() {
       this.props.get();
     }
     render() {
-      let { persons } = this.props;
+      let { people } = this.props;
       return (
         <div>
           <div>
-            <h1>Persons</h1>
-            <button onClick={() => this.getPersons()} type="button">Reload</button>
+            <h1>people</h1>
+            <button onClick={() => this.getPeople()} type="button">Reload</button>
           </div>
-          { persons && persons.map && <div>{ persons.map( (person) => <Person {...person} key={person.id} /> ) }</div> }
+          { people && <div>{ people.map( (person) => <Person {...person} key={person.id} /> ) }</div> }
         </div>
       );
     }
-  }  
+  };
+
+  // higher order component
+  // calls a certain action with default arguments
+  // and maps the action so that the wrapped component handles it's call to the action
+  // through the wrapped component
+  // the wrapped component should still be able to have own props
+  const withAutoload = (Component, action, ...initialActionArgs) => {
+    return class extends React.Component {
+      componentWillMount() {
+        this.onLoad( ...initialActionArgs );
+      }
+      onLoad( ...functionArgs ) {
+        return this.props[action]( ...functionArgs );
+      }
+      render() {
+        // transform the props and make sure that the autoload action gets mapped through the wrapped component
+        // this should ensure that their is no props discrepancy
+        // and it allows the hoc to be "invisble" from the child components view
+        const transformed = { ...this.props, [action]: (...childArgs) => this.onLoad(...childArgs)};
+        return <Component {...transformed} />
+      }
+    }
+  };
 
   /*-------------*/
   /* #region app */
   /***************/
   // quick and dirty to combine multiple reducers into the state
   const reducers = {
-    persons: withDefaultState( personReducer )
+    people: withDefaultState( peopleReducer, [] )
   };
 
   // create a store, apply the promiseAware middleware
   const store = createStore( combineReducers( reducers ), applyMiddleware( promiseAware ) );
 
-  const personsAction = actions( 'persons' )( 'get', 'set' );
-  const personsDispatcher = serviceDispatcher( personsAction )( personService );
-  const personsStateMapper = stateMapper( 'persons' );
+  const peopleDispatcher = serviceDispatcher( peopleActions )( peopleService );
+  const peopleStateMapper = stateMapper( 'people' );
 
   // create a state aware sample component
-  const ConnectedSample = connect( personsStateMapper, personsDispatcher)( Sample );
+  const ConnectedSample = connect( peopleStateMapper, peopleDispatcher )( withAutoload( Sample, 'get' ) );
 
   // render towards the container
   const target = document.querySelector('#container');
