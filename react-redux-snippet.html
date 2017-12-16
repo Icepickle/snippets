@@ -5,28 +5,13 @@
   <title>Simple reactjs template</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.24.0/babel.js"></script>
   <style>
-  .label {
-    text-align: right;
-    width: 100px;
-    padding: 3px;
-  }
-  .value {
-    text-align: left;
-    padding: 3px;
-  }
-  .card {
-    display: inline-block;
-    margin: 10px;
-    border: solid #a0a0a0 1px;
-    background-color: #efefef;
-    border-radius: 5px;
-  }
-  .card-row {
-    margin: 3px;
-  }
-  .card-row > span {
-    display: inline-block;
-  }
+    .grid > thead > .grid-header {
+      margin: 5px;
+      border-bottom: solid #333333 1px;
+    }
+    .grid-header {
+      text-align: left;
+    }
   </style>
 </head>
 <body>
@@ -129,55 +114,9 @@
     }
   };
 
-  /*------------------*/
-  /* #region services */
-  /********************/
-  const peopleData = [
-    { id: 1, firstName: 'john', lastName: 'doe', gender: 'm', country: 'usa' },
-    { id: 2, firstName: 'jane', lastName: 'doe', gender: 'f', country: 'usa' },
-    { id: 3, firstName: 'max', lastName: 'musterman', gender: 'm', country: 'germany' },
-    { id: 4, firstName: 'ulrike', lastName: 'musterman', gender: 'f', country: 'germany' },
-    { id: 5, firstName: 'john', lastName: 'smith', gender: 'm', country: 'uk' },
-    { id: 6, firstName: 'jane', lastName: 'smith', gender: 'f', country: 'uk' }
-  ];
-
-  const peopleService = {
-    get() {
-      return Promise.resolve( { type: peopleActions.set, payload: peopleData } );
-    }
-  };
-
-  /*--------------------*/
-  /* #region components */
-  /**********************/
-  const Person = ({ id, firstName, lastName, gender, country }) => {
-    return (<div className="card">
-      <div className="card-row"><span className="label">id:</span><span className="value">{ id }</span></div>
-      <div className="card-row"><span className="label">first name:</span><span className="value">{ firstName }</span></div>
-      <div className="card-row"><span className="label">last name:</span><span className="value">{ lastName }</span></div>
-      <div className="card-row"><span className="label">gender:</span><span className="value">{ gender }</span></div>
-      <div className="card-row"><span className="label">country:</span><span className="value">{ country }</span></div>
-    </div>);
-  };
-
-  // sample component, can be seen as the default app, not connected to anything
-  class Sample extends React.Component {
-    getPeople() {
-      this.props.get();
-    }
-    render() {
-      let { people } = this.props;
-      return (
-        <div>
-          <div>
-            <h1>people</h1>
-            <button onClick={() => this.getPeople()} type="button">Reload</button>
-          </div>
-          { people && <div>{ people.map( (person) => <Person {...person} key={person.id} /> ) }</div> }
-        </div>
-      );
-    }
-  };
+  /*---------------------------------*/
+  /* #region higher order components */
+  /***********************************/
 
   // higher order component
   // calls a certain action with default arguments
@@ -202,6 +141,102 @@
     }
   };
 
+
+  /*------------------*/
+  /* #region services */
+  /********************/
+  const peopleData = [
+    { id: 1, firstName: 'john', lastName: 'doe', gender: 'm', country: 'usa' },
+    { id: 2, firstName: 'jane', lastName: 'doe', gender: 'f', country: 'usa' },
+    { id: 3, firstName: 'max', lastName: 'musterman', gender: 'm', country: 'germany' },
+    { id: 4, firstName: 'ulrike', lastName: 'musterman', gender: 'f', country: 'germany' },
+    { id: 5, firstName: 'john', lastName: 'smith', gender: 'm', country: 'uk' },
+    { id: 6, firstName: 'jane', lastName: 'smith', gender: 'f', country: 'uk' }
+  ];
+
+  const peopleService = {
+    get() {
+      return Promise.resolve( { type: peopleActions.set, payload: peopleData } );
+    }
+  };
+
+  /*--------------------*/
+  /* #region components */
+  /**********************/
+  class Grid extends React.Component {
+    constructor( ...args ) {
+      super (...args );
+      this.state = {
+        orderBy: null,
+        selectedRows: []
+      }
+    }
+    renderHeader() {
+      let { columns } = this.props;
+      return (
+        <tr className="grid-header">
+          { columns && columns.map( (col, key) => <th key={`th-${key}-${col.title}`} className="header-column">{ col.title }</th> ) }
+        </tr>
+      );
+    }
+    renderColumns( row, key ) {
+      let { columns } = this.props;
+      return (
+        <tr className="grid-row" key={`row-${key}`}>
+          { columns && columns.map( (col, key) => <td key={`col-${key}-${col.property}`}>{ row[col.property] || col.template( row ) }</td> ) }
+        </tr>
+      );
+    }
+    renderRows() {
+      let { items } = this.props;
+      return items && items.map( this.renderColumns.bind( this ) );
+    }
+    render() {
+      return (
+        <table className="grid">
+          <thead>
+          { this.renderHeader() }
+          </thead>
+          <tbody>
+          { this.renderRows() }
+          </tbody>
+        </table>
+      );
+    }
+  }
+
+  const peopleGridColumns = [
+    { title: '#', property: 'id' },
+    { title: 'name', template: row => `${row.lastName}, ${row.firstName}` },
+    { title: 'gender', template: row => row.gender === 'm' ? 'male' : 'female' },
+    { title: 'country', property: 'country' }
+  ];
+
+  // People component, can be seen as the default app, not connected to anything
+  class PeopleContainer extends React.Component {
+    getPeople() {
+      this.props.get();
+    }
+    render() {
+      let { people } = this.props;
+      return (
+        <div>
+          <div>
+            <h1>people</h1>
+            <button onClick={() => this.getPeople()} type="button">Reload</button>
+          </div>
+          <Grid items={people} columns={peopleGridColumns} />
+        </div>
+      );
+    }
+  };
+
+  const peopleDispatcher = serviceDispatcher( peopleActions )( peopleService );
+  const peopleStateMapper = stateMapper( 'people' );
+
+  // create a state aware sample component
+  const ConnectedPeopleContainer = connect( peopleStateMapper, peopleDispatcher )( withAutoload( PeopleContainer, 'get' ) );
+
   /*-------------*/
   /* #region app */
   /***************/
@@ -213,15 +248,9 @@
   // create a store, apply the promiseAware middleware
   const store = createStore( combineReducers( reducers ), applyMiddleware( promiseAware ) );
 
-  const peopleDispatcher = serviceDispatcher( peopleActions )( peopleService );
-  const peopleStateMapper = stateMapper( 'people' );
-
-  // create a state aware sample component
-  const ConnectedSample = connect( peopleStateMapper, peopleDispatcher )( withAutoload( Sample, 'get' ) );
-
   // render towards the container
   const target = document.querySelector('#container');
-  ReactDOM.render( <Provider store={store}><ConnectedSample /></Provider>, target );
+  ReactDOM.render( <Provider store={store}><ConnectedPeopleContainer /></Provider>, target );
 </script>
 </body>
 </html>
